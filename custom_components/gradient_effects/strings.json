@@ -1,0 +1,115 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Gradient Effects",
+        "description": "Wrap a strip so its gradients appear as light effects, or set up the custom gradient library.",
+        "menu_options": {
+          "strip": "Add a strip",
+          "library": "Set up the custom gradient library"
+        }
+      },
+      "strip": {
+        "title": "Add a strip",
+        "description": "Choose a Philips Hue gradient strip (via Zigbee2MQTT) or a WLED light.",
+        "data": {
+          "source": "Light"
+        }
+      },
+      "settings": {
+        "title": "Strip settings",
+        "description": "Detected: {backend}.",
+        "data": {
+          "reverse": "Reverse gradient",
+          "mqtt_topic": "Zigbee2MQTT device topic",
+          "segment": "WLED segment"
+        },
+        "data_description": {
+          "reverse": "Run every gradient the other way along this strip.",
+          "mqtt_topic": "Used to send reversed and custom gradients. Normally the base topic plus the device's Zigbee2MQTT name.",
+          "segment": "Which segment of the WLED controller this light drives."
+        }
+      }
+    },
+    "error": {
+      "not_found": "That light isn't in the entity registry.",
+      "wled_no_host": "Couldn't find the WLED controller's address.",
+      "not_z2m": "This MQTT light isn't from Zigbee2MQTT.",
+      "not_gradient": "This light has no gradient scene control, so it isn't a Hue gradient strip.",
+      "unsupported": "Only Zigbee2MQTT Hue gradient strips and WLED lights are supported."
+    },
+    "abort": {
+      "already_configured": "This light is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Strip settings",
+        "data": {
+          "reverse": "Reverse gradient",
+          "mqtt_topic": "Zigbee2MQTT device topic",
+          "segment": "WLED segment"
+        },
+        "menu_options": {
+          "add": "Add a gradient",
+          "edit": "Edit a gradient",
+          "delete": "Delete a gradient"
+        }
+      },
+      "add": {
+        "title": "Add a gradient",
+        "description": "Pick 2 to 9 colours. They're spread evenly along the strip, first to last.",
+        "data": {
+          "name": "Name",
+          "colour_1": "Colour 1",
+          "colour_2": "Colour 2",
+          "colour_3": "Colour 3",
+          "colour_4": "Colour 4",
+          "colour_5": "Colour 5",
+          "colour_6": "Colour 6",
+          "colour_7": "Colour 7",
+          "colour_8": "Colour 8",
+          "colour_9": "Colour 9"
+        }
+      },
+      "edit": {
+        "title": "Edit a gradient",
+        "data": {
+          "gradient": "Gradient"
+        }
+      },
+      "edit_colours": {
+        "title": "Edit a gradient",
+        "description": "Pick 2 to 9 colours. They're spread evenly along the strip, first to last.",
+        "data": {
+          "name": "Name",
+          "colour_1": "Colour 1",
+          "colour_2": "Colour 2",
+          "colour_3": "Colour 3",
+          "colour_4": "Colour 4",
+          "colour_5": "Colour 5",
+          "colour_6": "Colour 6",
+          "colour_7": "Colour 7",
+          "colour_8": "Colour 8",
+          "colour_9": "Colour 9"
+        }
+      },
+      "delete": {
+        "title": "Delete a gradient",
+        "data": {
+          "gradient": "Gradient"
+        }
+      }
+    },
+    "error": {
+      "name_required": "Give the gradient a name.",
+      "colour_count": "Pick between 2 and 9 colours."
+    }
+  },
+  "exceptions": {
+    "unknown_effect": {
+      "message": "Unknown effect: {effect}"
+    }
+  }
+}

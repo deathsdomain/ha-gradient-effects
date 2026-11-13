@@ -1,0 +1,35 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # Icons ship in custom_components/gradient_effects/brand/ (HA 2026.3+), not in
+          # home-assistant/brands; drop this once HACS's check recognises local brand images.
+          ignore: brands
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Unit tests
+        run: uv run --no-project --python 3.14 --with pytest python -m pytest tests/unit
+      - name: Integration tests
+        run: uv run --no-project --python 3.14 --with pytest-homeassistant-custom-component python -m pytest tests/integration
