@@ -6,7 +6,8 @@ you get the same gradient — on a Hue Play strip or a 300-LED WLED run.
 
 - **75 Hue gradient scenes** built in, decoded from Zigbee2MQTT's own scene table
 - **Custom gradients** — 2 to 9 colours, defined in the UI, available on every strip
-- **Reverse per strip**, for strips mounted the other way round
+- **Reverse per strip** — a *Reverse gradient* switch on each strip's device that flips
+  the current gradient live
 - **Scene-safe**: effect, colour and brightness are applied in one call, so HA scenes
   restore exactly what you saved
 - **WLED palette cache**: palettes are uploaded on demand and recycled least-recently-used,
@@ -55,8 +56,9 @@ Copy `custom_components/gradient_effects` into your `config/custom_components/` 
 
 1. **Settings → Devices & services → Add integration → Gradient Effects**
 2. **Add a strip** → choose the Hue gradient or WLED light. The integration detects which
-   it is; set **Reverse gradient** if needed. For Hue strips, check the Zigbee2MQTT topic
-   (base topic + the device's Z2M name).
+   it is. For Hue strips, check the Zigbee2MQTT topic (base topic + the device's Z2M name).
+   Each strip gets a **Reverse gradient** switch on its device page; flipping it re-applies
+   the current gradient the other way round.
 3. Optional: add the integration again and choose **Set up the custom gradient library**.
    Its **Configure** button adds, edits and deletes custom gradients.
 

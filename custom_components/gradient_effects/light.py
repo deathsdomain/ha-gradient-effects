@@ -54,7 +54,9 @@ async def async_setup_entry(
     runtime = entry.runtime_data
     # Show the wrapper on the source light's device page, named like the device.
     device = async_entity_id_to_device(hass, runtime.backend.source)
-    async_add_entities([GradientLight(entry, runtime.data, runtime.backend, device)])
+    light = GradientLight(entry, runtime.data, runtime.backend, device)
+    runtime.light = light  # the reverse switch re-applies through it
+    async_add_entities([light])
 
 
 class GradientLight(LightEntity, RestoreEntity):
@@ -269,6 +271,16 @@ class GradientLight(LightEntity, RestoreEntity):
             await self._backend.turn_on(data, context)
 
         self.async_write_ha_state()
+
+    async def async_reapply(self) -> None:
+        """Re-send the current gradient (e.g. after its direction changed)."""
+        if not self.is_on or self._effect is None:
+            return
+        gradient = self._data.catalogue.by_label(self._effect)
+        if gradient is None:  # Solid / device effects have no direction
+            return
+        self._settle_until = time.monotonic() + SETTLE_SECONDS
+        await self._backend.apply_gradient(gradient, None, Context())
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         data = {ATTR_TRANSITION: kwargs[ATTR_TRANSITION]} if ATTR_TRANSITION in kwargs else {}

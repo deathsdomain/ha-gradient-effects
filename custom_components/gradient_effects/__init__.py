@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -27,14 +28,29 @@ from .const import (
 )
 from .data import GradientEffectsData, async_get_data
 
-PLATFORMS = [Platform.LIGHT]
+if TYPE_CHECKING:
+    from .light import GradientLight
+
+PLATFORMS = [Platform.LIGHT, Platform.SWITCH]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+# Options that can change live, without reloading the entry.
+LIVE_OPTIONS = {CONF_REVERSE}
 
 
 @dataclass
 class StripRuntime:
     data: GradientEffectsData
     backend: Backend
+    light: GradientLight | None = None
+    reload_options: dict[str, Any] = field(default_factory=dict)
+
+    async def async_set_reverse(self, hass: HomeAssistant, entry: ConfigEntry, reverse: bool) -> None:
+        """Flip the gradient direction now and remember it (no reload)."""
+        self.backend.reverse = reverse
+        hass.config_entries.async_update_entry(entry, options={**entry.options, CONF_REVERSE: reverse})
+        if self.light is not None:
+            await self.light.async_reapply()
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -68,8 +84,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
 
     backend = _build_backend(hass, entry, data)
-    entry.runtime_data = StripRuntime(data=data, backend=backend)
-    entry.async_on_unload(entry.add_update_listener(_async_reload))
+    entry.runtime_data = StripRuntime(data=data, backend=backend, reload_options=_reload_options(entry))
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     if isinstance(backend, WledBackend):
         entry.async_create_background_task(hass, backend.prepare(), f"{DOMAIN} warm palette cache")
@@ -82,5 +98,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def _async_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)
+def _reload_options(entry: ConfigEntry) -> dict[str, Any]:
+    return {k: v for k, v in entry.options.items() if k not in LIVE_OPTIONS}
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload for structural changes (topic, segment); live ones are already applied."""
+    runtime: StripRuntime = entry.runtime_data
+    if _reload_options(entry) != runtime.reload_options:
+        await hass.config_entries.async_reload(entry.entry_id)

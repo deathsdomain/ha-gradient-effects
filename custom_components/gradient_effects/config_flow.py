@@ -158,10 +158,10 @@ def _backend_name(backend: str) -> str:
     return {BACKEND_HUE_Z2M: "Hue gradient (Zigbee2MQTT)", BACKEND_WLED: "WLED"}.get(backend, backend)
 
 
-def _strip_schema(backend: str, current: dict[str, Any]) -> vol.Schema:
-    fields: dict[Any, Any] = {
-        vol.Required(CONF_REVERSE, default=bool(current.get(CONF_REVERSE, False))): BooleanSelector(),
-    }
+def _strip_schema(backend: str, current: dict[str, Any], *, include_reverse: bool = True) -> vol.Schema:
+    fields: dict[Any, Any] = {}
+    if include_reverse:  # afterwards it's the "Reverse gradient" switch on the device
+        fields[vol.Required(CONF_REVERSE, default=bool(current.get(CONF_REVERSE, False)))] = BooleanSelector()
     if backend == BACKEND_HUE_Z2M:
         fields[vol.Required(CONF_MQTT_TOPIC, default=current.get(CONF_MQTT_TOPIC, ""))] = TextSelector()
     if backend == BACKEND_WLED:
@@ -176,9 +176,12 @@ class StripOptionsFlow(OptionsFlow):
         if user_input is not None:
             if CONF_SEGMENT in user_input:
                 user_input[CONF_SEGMENT] = int(user_input[CONF_SEGMENT])
-            return self.async_create_entry(data=user_input)
+            # Keep options this form doesn't show (reverse lives on the device switch).
+            return self.async_create_entry(data={**self.config_entry.options, **user_input})
         current = {**self.config_entry.data, **self.config_entry.options}
-        return self.async_show_form(step_id="init", data_schema=_strip_schema(current[CONF_BACKEND], current))
+        return self.async_show_form(
+            step_id="init", data_schema=_strip_schema(current[CONF_BACKEND], current, include_reverse=False)
+        )
 
 
 class LibraryOptionsFlow(OptionsFlow):

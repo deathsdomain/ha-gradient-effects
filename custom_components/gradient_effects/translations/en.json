@@ -47,7 +47,6 @@
       "init": {
         "title": "Strip settings",
         "data": {
-          "reverse": "Reverse gradient",
           "mqtt_topic": "Zigbee2MQTT device topic",
           "segment": "WLED segment"
         },
@@ -110,6 +109,13 @@
   "exceptions": {
     "unknown_effect": {
       "message": "Unknown effect: {effect}"
+    }
+  },
+  "entity": {
+    "switch": {
+      "reverse": {
+        "name": "Reverse gradient"
+      }
     }
   }
 }
