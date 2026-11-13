@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10.3.3
       - name: Unit tests
         run: uv run --no-project --python 3.14 --with pytest python -m pytest tests/unit
       - name: Integration tests
