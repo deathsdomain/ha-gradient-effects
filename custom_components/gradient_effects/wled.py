@@ -116,13 +116,31 @@ class WledController:
             capacity = LEGACY_CAPACITY
 
         manifest = await self._get_json(f"/{MANIFEST_FILE}")
-        if isinstance(manifest, dict) and manifest.get("host_capacity") == capacity:
-            cache = PaletteCache.from_manifest(capacity, manifest)
-        else:
+        adopted = not (isinstance(manifest, dict) and manifest.get("host_capacity") == capacity)
+        if adopted:
             cache = await self._adopt_existing(capacity, known_hashes)
+        else:
+            cache = PaletteCache.from_manifest(capacity, manifest)
 
         cache.set_pinned(await self._preset_slots(capacity))
+        self._cache = cache
+        if adopted:
+            # Write the map straight away: adopting means fetching every palette file,
+            # which shouldn't be repeated after each Home Assistant restart.
+            await self._save_manifest()
         return cache
+
+    async def _ensure_loaded(self, known_hashes: set[str]) -> PaletteCache:
+        """Caller must hold ``self._lock``."""
+        if self._cache is None:
+            await self._load_cache(known_hashes)
+        assert self._cache is not None
+        return self._cache
+
+    async def prepare(self, known_hashes: set[str]) -> None:
+        """Load (or adopt) the slot map ahead of the first effect change."""
+        async with self._lock:
+            await self._ensure_loaded(known_hashes)
 
     async def _adopt_existing(self, capacity: int, known_hashes: set[str]) -> PaletteCache:
         """First contact (no manifest): hash palette files already on the controller.
@@ -169,10 +187,9 @@ class WledController:
         """Make sure ``palette`` is on the controller; return its palette ID."""
         content = palette_content_hash(palette)
         async with self._lock:
-            if self._cache is None:
-                self._cache = await self._load_cache(known_hashes)
+            cache = await self._ensure_loaded(known_hashes)
             try:
-                slot, needs_upload = self._cache.allocate(content)
+                slot, needs_upload = cache.allocate(content)
             except CacheFullError as err:
                 raise WledError(str(err)) from err
             if needs_upload:

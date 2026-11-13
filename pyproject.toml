@@ -1,6 +1,6 @@
 [project]
 name = "ha-gradient-effects"
-version = "0.1.0"
+version = "0.1.1"
 description = "Home Assistant integration: Hue-style gradients as light effects for Hue gradient and WLED strips"
 requires-python = ">=3.14"
 

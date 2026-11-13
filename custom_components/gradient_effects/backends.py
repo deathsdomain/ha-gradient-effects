@@ -164,6 +164,14 @@ class WledBackend(Backend):
         self.segment = segment
         self._known_hashes = known_hashes  # callable -> set[str]
 
+    async def prepare(self) -> None:
+        """Warm the palette cache in the background so the first effect is instant."""
+        try:
+            await self.controller.prepare(self._known_hashes())
+        except WledError as err:
+            _LOGGER.warning("WLED %s: couldn't read palettes yet (%s); will retry on first use",
+                            self.controller.host, err)
+
     async def apply_gradient(self, gradient: Gradient, brightness: int | None, context: Context) -> None:
         try:
             palette_id = await self.controller.ensure_palette(gradient.wled_palette(), self._known_hashes())

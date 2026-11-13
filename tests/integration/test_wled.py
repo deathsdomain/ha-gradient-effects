@@ -2,24 +2,28 @@
 
 from __future__ import annotations
 
-import json
-
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.gradient_effects.const import DOMAIN
+from custom_components.gradient_effects.gradients import load_builtin
 
 from .conftest import WLED_HOST
 
 BASE = f"http://{WLED_HOST}"
 
 
-def mock_controller(aioclient_mock: AiohttpClientMocker, presets: dict | None = None) -> None:
-    aioclient_mock.get(f"{BASE}/json/info", json={"ver": "16.0.1", "cpalmax": 129, "cpalcount": 0})
+def mock_controller(
+    aioclient_mock: AiohttpClientMocker, presets: dict | None = None, files: dict[str, dict] | None = None
+) -> None:
+    files = files or {}
+    aioclient_mock.get(f"{BASE}/json/info", json={"ver": "16.0.1", "cpalmax": 129, "cpalcount": len(files)})
     aioclient_mock.get(f"{BASE}/gradient-effects.json", status=404)
-    aioclient_mock.get(f"{BASE}/edit?list=/", json=[])
+    aioclient_mock.get(f"{BASE}/edit?list=/", json=[{"name": n, "type": "file", "size": 1} for n in files])
+    for name, body in files.items():
+        aioclient_mock.get(f"{BASE}/{name}", json=body)
     aioclient_mock.get(f"{BASE}/presets.json", json=presets or {})
     aioclient_mock.post(f"{BASE}/upload", text="File Uploaded!")
     aioclient_mock.post(f"{BASE}/json/state", json={"success": True})
@@ -49,6 +53,9 @@ async def test_effect_list_and_upload(hass: HomeAssistant, aioclient_mock: Aioht
     mock_controller(aioclient_mock)
     wrapper = await add_strip(hass, wled_source)
 
+    # Setup warmed the cache in the background and recorded the (empty) slot map once.
+    assert len(calls(aioclient_mock, "POST", "/upload")) == 1
+
     state = hass.states.get(wrapper)
     assert state is not None, hass.states.async_entity_ids("light")
     effects = state.attributes["effect_list"]
@@ -62,7 +69,7 @@ async def test_effect_list_and_upload(hass: HomeAssistant, aioclient_mock: Aioht
         blocking=True,
     )
     uploads = calls(aioclient_mock, "POST", "/upload")
-    assert len(uploads) == 2  # palette0.json + manifest
+    assert len(uploads) == 3  # + palette0.json + manifest
     posted = calls(aioclient_mock, "POST", "/json/state")[-1][2]
     seg = posted["seg"][0]
     assert posted["bri"] == 200 and posted["on"] is True
@@ -71,7 +78,7 @@ async def test_effect_list_and_upload(hass: HomeAssistant, aioclient_mock: Aioht
 
     # Same gradient again: cache hit, no further uploads.
     await hass.services.async_call("light", "turn_on", {"entity_id": wrapper, "effect": "Vapor Wave"}, blocking=True)
-    assert len(calls(aioclient_mock, "POST", "/upload")) == 2
+    assert len(calls(aioclient_mock, "POST", "/upload")) == 3
 
 
 async def test_reverse_and_pinned_presets(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, wled_source):
@@ -95,11 +102,23 @@ async def test_solid_clears_effect(hass: HomeAssistant, aioclient_mock: AiohttpC
     assert hass.states.get(wrapper).attributes.get("effect") is None
 
 
-async def test_manifest_payload(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, wled_source):
-    mock_controller(aioclient_mock)
+async def test_adopts_existing_palettes(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, wled_source):
+    """Palettes uploaded before the integration (like MasterBedroomTV's 75) are reused,
+    and foreign ones are left alone."""
+    blossom = next(g for g in load_builtin() if g.hue_scene == "blossom")
+    mock_controller(
+        aioclient_mock,
+        files={
+            "palette0.json": {"palette": [0, 1, 2, 3, 255, 4, 5, 6]},  # someone else's
+            "palette1.json": {"palette": blossom.wled_palette()},
+        },
+    )
     wrapper = await add_strip(hass, wled_source)
+    assert len(calls(aioclient_mock, "POST", "/upload")) == 1  # manifest only
+
     await hass.services.async_call("light", "turn_on", {"entity_id": wrapper, "effect": "Blossom"}, blocking=True)
-    # The palette upload body is multipart; just check the manifest went last and is JSON-able.
-    uploads = calls(aioclient_mock, "POST", "/upload")
-    assert len(uploads) == 2
-    assert json.dumps(uploads[-1][2] is not None)
+    assert calls(aioclient_mock, "POST", "/json/state")[-1][2]["seg"][0]["pal"] == 199  # slot 1, no upload
+    assert len(calls(aioclient_mock, "POST", "/upload")) == 1
+
+    await hass.services.async_call("light", "turn_on", {"entity_id": wrapper, "effect": "Smitten"}, blocking=True)
+    assert calls(aioclient_mock, "POST", "/json/state")[-1][2]["seg"][0]["pal"] == 198  # skips foreign slot 0

@@ -67,9 +67,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # The library entry only hosts the custom-gradient editor (its options flow).
         return True
 
-    entry.runtime_data = StripRuntime(data=data, backend=_build_backend(hass, entry, data))
+    backend = _build_backend(hass, entry, data)
+    entry.runtime_data = StripRuntime(data=data, backend=backend)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if isinstance(backend, WledBackend):
+        entry.async_create_background_task(hass, backend.prepare(), f"{DOMAIN} warm palette cache")
     return True
 
 
