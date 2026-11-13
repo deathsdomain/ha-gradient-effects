@@ -73,7 +73,9 @@ class WledController:
             raise WledError(f"GET {path} failed: {err}") from err
 
     async def _upload(self, name: str, payload: dict[str, Any]) -> None:
-        form = aiohttp.FormData()
+        # quote_fields=False: aiohttp would otherwise send filename="%2Fname", which
+        # WLED stores literally (so palettes never load and the manifest is never found).
+        form = aiohttp.FormData(quote_fields=False)
         form.add_field(
             "data",
             json.dumps(payload, separators=(",", ":")).encode(),

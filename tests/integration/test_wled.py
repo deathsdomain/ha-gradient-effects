@@ -122,3 +122,20 @@ async def test_adopts_existing_palettes(hass: HomeAssistant, aioclient_mock: Aio
 
     await hass.services.async_call("light", "turn_on", {"entity_id": wrapper, "effect": "Smitten"}, blocking=True)
     assert calls(aioclient_mock, "POST", "/json/state")[-1][2]["seg"][0]["pal"] == 198  # skips foreign slot 0
+
+
+async def test_upload_filenames_not_url_encoded(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, wled_source
+):
+    """WLED stores the multipart filename literally: it must be "/palette0.json",
+    not aiohttp's default "%2Fpalette0.json"."""
+    mock_controller(aioclient_mock)
+    wrapper = await add_strip(hass, wled_source)
+    await hass.services.async_call("light", "turn_on", {"entity_id": wrapper, "effect": "Blossom"}, blocking=True)
+    names = []
+    for call in calls(aioclient_mock, "POST", "/upload"):
+        part = call[2]()  # FormData -> multipart writer
+        names.append(part._parts[0][0].headers["Content-Disposition"])
+    assert any('filename="/palette0.json"' in n for n in names), names
+    assert any('filename="/gradient-effects.json"' in n for n in names), names
+    assert not any("%2F" in n for n in names), names
