@@ -74,7 +74,9 @@ async def test_hue_flip_sends_reversed_gradient(hass: HomeAssistant, hue_source)
         "switch", "turn_on", {"entity_id": reverse_switch(hass, entry.entry_id)}, blocking=True
     )
     payload = json.loads(mqtt_calls[-1].data["payload"])
-    assert payload["gradient"][0].startswith("#") and len(payload["gradient"]) == 5
+    # Reverse on: sent in scene order; z2m's own flip puts it on the strip reversed
+    # (verified on a Hue Play gradient lightstrip).
+    assert payload["gradient"] == test_hue.vapor_wave().z2m_hex()
     assert "brightness" not in payload
 
 

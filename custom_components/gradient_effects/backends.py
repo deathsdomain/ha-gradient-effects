@@ -26,6 +26,12 @@ from .wled import WledController, WledError
 _LOGGER = logging.getLogger(__name__)
 
 
+# zigbee-herdsman-converters' philipsLight registers `philipsTz.gradient({reverse: true})`
+# for gradient lights: a list sent to `gradient` reaches the strip back to front.
+# (Verified on a Hue Play gradient lightstrip: sending scene order read back reversed.)
+Z2M_GRADIENT_SET_REVERSES = True
+
+
 def _label(raw: str) -> str:
     return raw.replace("_", " ").title()
 
@@ -127,7 +133,11 @@ class HueZ2MBackend(Backend):
             return
 
         # Reversed or custom: send the colour points explicitly via z2m's `gradient`.
-        payload: dict[str, Any] = {"state": "ON", "gradient": gradient.z2m_hex(reverse=self.reverse)}
+        # z2m registers that converter with reverse=True for Hue gradient lights, so it
+        # flips whatever list it's given before encoding; pre-flip to land on the
+        # intended order (scene order, i.e. what the native recall shows, unless reversed).
+        send_reversed = self.reverse != Z2M_GRADIENT_SET_REVERSES
+        payload: dict[str, Any] = {"state": "ON", "gradient": gradient.z2m_hex(reverse=send_reversed)}
         if brightness is not None:
             payload["brightness"] = brightness
         # Via the service rather than importing the mqtt component, so WLED-only

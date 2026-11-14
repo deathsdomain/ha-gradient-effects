@@ -10,6 +10,8 @@ from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.gradient_effects.const import DOMAIN
+from custom_components.gradient_effects.data import async_get_data
+from custom_components.gradient_effects.gradients import load_builtin
 
 
 async def add_strip(hass: HomeAssistant, source: str, reverse: bool = False) -> str:
@@ -68,7 +70,28 @@ async def test_reverse_sends_gradient_over_mqtt(hass: HomeAssistant, hue_source)
     assert mqtt_calls[0].data["topic"] == "zigbee2mqtt/Headboard/set"
     payload = json.loads(mqtt_calls[0].data["payload"])
     assert payload["brightness"] == 150 and payload["state"] == "ON"
-    assert len(payload["gradient"]) == 5 and all(c.startswith("#") for c in payload["gradient"])
+    # z2m flips the list for Hue gradient lights, so "reversed" is sent in scene order.
+    assert payload["gradient"] == vapor_wave().z2m_hex()
+
+
+async def test_custom_gradient_sent_pre_flipped(hass: HomeAssistant, hue_source):
+    """A custom gradient played forwards is sent back-to-front, so it lands
+    first-colour-first after z2m's own flip."""
+    data = await async_get_data(hass)
+    await data.async_save_custom("Duo", [[255, 0, 0], [0, 0, 255]])
+    light, _ = hue_source
+    wrapper = await add_strip(hass, light)
+    mqtt_calls = async_mock_service(hass, "mqtt", "publish")
+
+    await hass.services.async_call("light", "turn_on", {"entity_id": wrapper, "effect": "Duo"}, blocking=True)
+    sent = json.loads(mqtt_calls[0].data["payload"])["gradient"]
+    duo = data.catalogue.by_label("Duo")
+    assert sent == list(reversed(duo.z2m_hex()))
+    assert sent[0].startswith("#") and sent[-1] != sent[0]
+
+
+def vapor_wave():
+    return next(g for g in load_builtin() if g.hue_scene == "vapor_wave")
 
 
 async def test_unsupported_light_rejected(hass: HomeAssistant):
