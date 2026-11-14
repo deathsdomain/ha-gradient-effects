@@ -1,13 +1,21 @@
 {
   "domain": "gradient_effects",
   "name": "Gradient Effects",
-  "after_dependencies": ["mqtt", "wled"],
-  "codeowners": ["@deathsdomain"],
+  "after_dependencies": [
+    "mqtt",
+    "wled"
+  ],
+  "categories": [
+    "lighting.led_strips_controllers"
+  ],
+  "codeowners": [
+    "@deathsdomain"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/deathsdomain/ha-gradient-effects",
   "integration_type": "helper",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/deathsdomain/ha-gradient-effects/issues",
   "requirements": [],
-  "version": "0.1.4"
+  "version": "0.1.5"
 }
