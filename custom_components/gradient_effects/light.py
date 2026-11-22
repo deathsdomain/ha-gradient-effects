@@ -238,24 +238,30 @@ class GradientLight(LightEntity, RestoreEntity):
     # --- control -----------------------------------------------------------------
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """One call carries everything a scene replays: effect, colour and brightness."""
+        """One call carries everything a scene replays: effect, colour, brightness and
+        transition — every path forwards all of them."""
         context = self._context or Context()
         effect = kwargs.pop(ATTR_EFFECT, None)
         brightness = kwargs.get(ATTR_BRIGHTNESS)
+        transition = kwargs.get(ATTR_TRANSITION)
         colour = {k: kwargs[k] for k in COLOUR_ATTRS if k in kwargs}
-        self._settle_until = time.monotonic() + SETTLE_SECONDS
+        # A long fade can report intermediate colours; don't mistake them for someone
+        # else changing the light.
+        self._settle_until = time.monotonic() + SETTLE_SECONDS + (transition or 0)
 
         if effect is not None:
             if effect == EFFECT_SOLID:
-                await self._backend.apply_solid(colour, brightness, context)
+                await self._backend.apply_solid(colour, brightness, context, transition)
                 self._effect = None
             elif (gradient := self._data.catalogue.by_label(effect)) is not None:
                 # A gradient wins over any colour in the same call (scene snapshots
                 # always carry one).
-                await self._backend.apply_gradient(gradient, brightness, context)
+                await self._backend.apply_gradient(gradient, brightness, context, transition)
                 self._effect = effect
             elif effect in self._backend.native_effects:
-                await self._backend.apply_native_effect(self._backend.native_effects[effect], brightness, context)
+                await self._backend.apply_native_effect(
+                    self._backend.native_effects[effect], brightness, context, transition
+                )
                 self._effect = effect
             else:
                 raise ServiceValidationError(
@@ -264,7 +270,7 @@ class GradientLight(LightEntity, RestoreEntity):
                     translation_placeholders={"effect": effect},
                 )
         elif colour:
-            await self._backend.apply_solid(colour, brightness, context)
+            await self._backend.apply_solid(colour, brightness, context, transition)
             self._effect = None
         else:
             data = {k: kwargs[k] for k in (ATTR_BRIGHTNESS, ATTR_TRANSITION) if k in kwargs}

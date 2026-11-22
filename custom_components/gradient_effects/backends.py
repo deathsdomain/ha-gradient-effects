@@ -12,6 +12,7 @@ from homeassistant.components.light import (
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_EFFECT,
     ATTR_EFFECT_LIST,
+    ATTR_TRANSITION,
     ATTR_XY_COLOR,
     ColorMode,
 )
@@ -34,6 +35,16 @@ Z2M_GRADIENT_SET_REVERSES = True
 
 def _label(raw: str) -> str:
     return raw.replace("_", " ").title()
+
+
+def _opts(brightness: int | None, transition: float | None) -> dict[str, Any]:
+    """Brightness / transition service-call data, only for what the caller supplied."""
+    data: dict[str, Any] = {}
+    if brightness is not None:
+        data[ATTR_BRIGHTNESS] = brightness
+    if transition is not None:
+        data[ATTR_TRANSITION] = transition
+    return data
 
 
 class Backend:
@@ -63,15 +74,23 @@ class Backend:
         """Device effects to offer alongside gradients: {label: raw effect}."""
         return {}
 
-    async def apply_gradient(self, gradient: Gradient, brightness: int | None, context: Context) -> None:
+    async def apply_gradient(
+        self, gradient: Gradient, brightness: int | None, context: Context, transition: float | None = None
+    ) -> None:
         raise NotImplementedError
 
-    async def apply_native_effect(self, raw: str, brightness: int | None, context: Context) -> None:
-        await self._light("turn_on", context, **_bri(brightness), effect=raw)
+    async def apply_native_effect(
+        self, raw: str, brightness: int | None, context: Context, transition: float | None = None
+    ) -> None:
+        await self._light("turn_on", context, **_opts(brightness, transition), effect=raw)
 
-    async def apply_solid(self, colour: dict[str, Any], brightness: int | None, context: Context) -> None:
+    async def apply_solid(
+        self, colour: dict[str, Any], brightness: int | None, context: Context, transition: float | None = None
+    ) -> None:
         """Plain colour. With no colour given, flatten to the strip's current colour."""
-        await self._light("turn_on", context, **_bri(brightness), **(colour or self._current_colour()))
+        await self._light(
+            "turn_on", context, **_opts(brightness, transition), **(colour or self._current_colour())
+        )
 
     async def turn_on(self, data: dict[str, Any], context: Context) -> None:
         await self._light("turn_on", context, **data)
@@ -116,11 +135,15 @@ class HueZ2MBackend(Backend):
         state = self.hass.states.get(self.scene_select)
         return state is not None and gradient.hue_scene in (state.attributes.get("options") or [])
 
-    async def apply_gradient(self, gradient: Gradient, brightness: int | None, context: Context) -> None:
-        if not self.reverse and self._scene_option_available(gradient):
-            # Native scene recall: exactly what the Hue app would do.
+    async def apply_gradient(
+        self, gradient: Gradient, brightness: int | None, context: Context, transition: float | None = None
+    ) -> None:
+        # Native scene recall (exactly what the Hue app does) when it can express the
+        # request. It can't reverse, and z2m's gradient_scene has a fixed fade with no
+        # transition, so those go via the explicit `gradient` command below.
+        if not self.reverse and transition is None and self._scene_option_available(gradient):
             if not self.is_on():
-                await self._light("turn_on", context, **_bri(brightness))
+                await self._light("turn_on", context, **_opts(brightness, None))
             await self.hass.services.async_call(
                 "select",
                 "select_option",
@@ -132,7 +155,9 @@ class HueZ2MBackend(Backend):
                 await self._light("turn_on", context, brightness=brightness)
             return
 
-        # Reversed or custom: send the colour points explicitly via z2m's `gradient`.
+        # Explicit colour points via z2m's `gradient`, with state, brightness and
+        # transition in the same message: z2m fades on/brightness with `transition` and
+        # maps it to the gradient's own fade speed.
         # z2m registers that converter with reverse=True for Hue gradient lights, so it
         # flips whatever list it's given before encoding; pre-flip to land on the
         # intended order (scene order, i.e. what the native recall shows, unless reversed).
@@ -140,6 +165,8 @@ class HueZ2MBackend(Backend):
         payload: dict[str, Any] = {"state": "ON", "gradient": gradient.z2m_hex(reverse=send_reversed)}
         if brightness is not None:
             payload["brightness"] = brightness
+        if transition is not None:
+            payload["transition"] = transition
         # Via the service rather than importing the mqtt component, so WLED-only
         # installs (no paho-mqtt) can still load this module.
         await self.hass.services.async_call(
@@ -150,11 +177,13 @@ class HueZ2MBackend(Backend):
             context=context,
         )
 
-    async def apply_solid(self, colour: dict[str, Any], brightness: int | None, context: Context) -> None:
+    async def apply_solid(
+        self, colour: dict[str, Any], brightness: int | None, context: Context, transition: float | None = None
+    ) -> None:
         state = self._state()
         if state is not None and state.attributes.get(ATTR_EFFECT) not in (None, "none"):
             await self._light("turn_on", context, effect="stop_hue_effect")
-        await super().apply_solid(colour, brightness, context)
+        await super().apply_solid(colour, brightness, context, transition)
 
 
 class WledBackend(Backend):
@@ -182,21 +211,29 @@ class WledBackend(Backend):
             _LOGGER.warning("WLED %s: couldn't read palettes yet (%s); will retry on first use",
                             self.controller.host, err)
 
-    async def apply_gradient(self, gradient: Gradient, brightness: int | None, context: Context) -> None:
+    async def apply_gradient(
+        self, gradient: Gradient, brightness: int | None, context: Context, transition: float | None = None
+    ) -> None:
         try:
             palette_id = await self.controller.ensure_palette(gradient.wled_palette(), self._known_hashes())
             await self.controller.show_palette(
-                self.segment, palette_id, reverse=self.reverse, brightness=brightness
+                self.segment, palette_id, reverse=self.reverse, brightness=brightness, transition=transition
             )
         except WledError as err:
             raise HomeAssistantError(f"WLED {self.controller.host}: {err}") from err
         await self._refresh()
 
-    async def apply_solid(self, colour: dict[str, Any], brightness: int | None, context: Context) -> None:
+    async def apply_solid(
+        self, colour: dict[str, Any], brightness: int | None, context: Context, transition: float | None = None
+    ) -> None:
         # The WLED integration keeps the current effect when only a colour is sent,
         # so switch back to Solid in the same call.
         await self._light(
-            "turn_on", context, **_bri(brightness), effect=EFFECT_SOLID, **(colour or self._current_colour())
+            "turn_on",
+            context,
+            **_opts(brightness, transition),
+            effect=EFFECT_SOLID,
+            **(colour or self._current_colour()),
         )
 
     async def _refresh(self) -> None:
@@ -207,7 +244,3 @@ class WledBackend(Backend):
         await self.hass.services.async_call(
             "homeassistant", "update_entity", {ATTR_ENTITY_ID: self.source}, blocking=False
         )
-
-
-def _bri(brightness: int | None) -> dict[str, Any]:
-    return {} if brightness is None else {ATTR_BRIGHTNESS: brightness}

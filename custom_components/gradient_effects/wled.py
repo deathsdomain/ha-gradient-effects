@@ -215,6 +215,7 @@ class WledController:
         *,
         reverse: bool,
         brightness: int | None,
+        transition: float | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "on": True,
@@ -233,4 +234,8 @@ class WledController:
         }
         if brightness is not None:
             payload["bri"] = brightness
+        if transition is not None:
+            # `tt` is a one-off transition for this call, in 100 ms units (`transition`
+            # would also change the controller's default).
+            payload["tt"] = max(0, round(transition * 10))
         await self.set_state(payload)
